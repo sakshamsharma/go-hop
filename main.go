@@ -25,15 +25,22 @@ func main() {
     targetPortNumber, err = strconv.Atoi(os.Args[4])
     checkError(err)
 
+    // Initialize the listening server
     server := Server{sourceHost, sourcePortNumber, "tcp"}
+
+    // Use piper function to handle connections
     server.Listen(piper)
 }
 
+// Establish connection with the client, and begin duplex pipe
 func piper(scon net.Conn) {
     ccon, err := net.Dial("tcp", targetHost + ":" + strconv.Itoa(targetPortNumber))
     checkError(err)
 
+    // To quit one side when other has quit as well
     quit := make(chan bool)
+
+    // To figure out when one pipe closes
     wait := make(chan bool)
 
     go checkedPipe(ccon, scon, quit, wait, "c2s")
@@ -47,7 +54,12 @@ func piper(scon net.Conn) {
 func checkedPipe(c1, c2 net.Conn, quit chan bool, wait chan bool, name string) {
     defer func() {
         Info.Println(name, ": Exiting")
+
+        // Important
+        // Helps break the other side's blocked channel
         c1.Close()
+
+        // Let main thread know it can proceed with quits
         wait <- true
     }()
 
@@ -59,7 +71,8 @@ func checkedPipe(c1, c2 net.Conn, quit chan bool, wait chan bool, name string) {
         case <-quit:
             return
         default:
-            len, err = io.CopyN(c1, c2, 200)
+            // Read up to 1000 bytes and pack them off
+            len, err = io.CopyN(c1, c2, 1000)
             if err != nil || len == 0 {
                 return
             }
